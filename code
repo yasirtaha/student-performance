@@ -1,0 +1,263 @@
+import pandas as pd
+
+df = pd.read_csv('./StudentPerformanceFactors.csv')
+def assign_grade(score):
+    if score >= 80:
+        return 'A'
+    elif 70 <= score < 80:
+        return 'B'
+    elif 60 <= score < 70:
+        return 'C'
+    elif 50 <= score < 60:
+        return 'D'
+    else:
+        return 'F'
+
+print("Rows with null values before processing:", df.isnull().any(axis=1).sum())
+df['Grade'] = df['Exam_Score'].apply(assign_grade)
+df['Teacher_Quality'] = df['Teacher_Quality'].fillna('Medium')
+df = df.dropna(subset=['Distance_from_Home', 'Parental_Education_Level'])
+print("Rows with null values after processing:", df.isnull().any(axis=1).sum())
+
+df.head()
+df.info()
+df.describe()
+
+# List of columns for one-hot encoding (nominal variables)
+nominal_cols = ['Parental_Involvement', 'Access_to_Resources', 'Extracurricular_Activities', 'Motivation_Level',
+                'Internet_Access', 'School_Type', 'Peer_Influence', 'Parental_Education_Level', 'Gender']
+
+# One-Hot Encoding with get_dummies
+df_encoded = pd.get_dummies(df, columns=nominal_cols, drop_first=True)
+
+# List of ordinal columns for Label Encoding
+ordinal_cols = ['Teacher_Quality', 'Learning_Disabilities', 'Distance_from_Home', 'Family_Income']
+
+# Label Encoding with astype('category').cat.codes
+for col in ordinal_cols:
+    df_encoded[col] = df_encoded[col].astype('category').cat.codes
+
+# Display the processed dataframe
+df_encoded.head()
+
+print(df_encoded[['Exam_Score']].head())
+
+df_model_1 = df_encoded.drop(columns=['Grade'])
+
+df_model_1.info()
+
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Function to automatically plot all features
+def plot_all_features(df_model_1):
+    # Since all features are now numeric (int64, int8, uint8), treat them as numeric
+    numeric_cols = df_model_1.columns
+    
+    # Set up the figure for plotting
+    plt.figure(figsize=(15, len(numeric_cols) * 3))
+    
+    # Loop through each column and plot its distribution using histograms/boxplots
+    for i, col in enumerate(numeric_cols, 1):
+        plt.subplot((len(numeric_cols) // 4) + 1, 4, i)
+        sns.boxplot(y=df_model_1[col])  # Use boxplot to check for outliers
+        plt.title(f'Boxplot of {col}')
+    
+    plt.tight_layout()
+    plt.show()
+
+# Call the function to plot all features in the dataset
+plot_all_features(df_model_1)
+
+plt.figure(figsize=(10, 6))
+
+# Use index as the x-axis (since scatter plot requires two variables) and Exam_Score as y-axis
+plt.scatter(df_model_1['Exam_Score'], df_model_1.index, color='blue', alpha=0.6)
+
+# Add labels and title
+plt.title('Scatter Plot of Exam Scores')
+plt.xlabel('Index (Student)')
+plt.ylabel('Exam Score')
+
+# Show the plot
+plt.show()
+
+df_model_1= df_model_1[df_model_1['Exam_Score'] <= 100]
+
+# Verifying if the outlier is removed
+outliers_removed = df_model_1[df_model_1['Exam_Score'] > 100]
+print(outliers_removed)  # This should return an empty DataFrame if the outlier is removed
+
+plt.figure(figsize=(10, 6))
+
+# Use index as the x-axis (since scatter plot requires two variables) and Exam_Score as y-axis
+plt.scatter(df_model_1['Exam_Score'], df_model_1.index, color='blue', alpha=0.6)
+
+# Add labels and title
+plt.title('Scatter Plot of Exam Scores')
+plt.xlabel(' Exam Score')
+plt.ylabel('Index (Student)')
+
+# Show the plot
+plt.show()
+
+
+import sklearn as sk
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import numpy as np
+
+X = df_model_1.drop(columns = ['Exam_Score'])
+y = df_model_1['Exam_Score']
+
+#Train test split
+X_train, X_test, y_train, y_test = train_test_split(X,y, test_size=0.2, random_state=42)
+
+rf_model = RandomForestRegressor(random_state=42)
+
+#Train model
+
+rf_model.fit(X_train, y_train)
+
+#predict/run model
+
+y_predict = rf_model.predict(X_test)
+
+mse = mean_squared_error(y_test, y_predict)
+rmse = np.sqrt(mse)
+mae = mean_absolute_error(y_test, y_predict)
+r2 = r2_score(y_test, y_predict)
+
+print(f"mean squared erro : {mse}")
+print(f"Root Mean Squared Error (RMSE): {rmse}")
+print(f'Mean Absolute Error (MAE): {mae}')
+print(f'R-squared (R²): {r2}')
+
+# Define a parameter
+param_grid = {
+    'n_estimators' : [10, 50, 100],
+    'min_samples_split' : [2, 5, 10],
+    'min_samples_leaf' : [1,2,4],
+    'max_depth': [10, 20, 30, None],
+    'bootstrap': [True, False]
+}
+
+#initializing grid search
+
+grid_search = GridSearchCV(estimator = rf_model, param_grid = param_grid, cv = 5, n_jobs = 1, verbose = 2, scoring = 'neg_mean_squared_error')
+
+# fitting grid into data
+grid_search.fit(X_train, y_train)
+
+
+best_params = grid_search.best_params_
+
+print(f"Best Hyperparameters : best_params")
+
+best_rf_model = grid_search.best_estimator_
+
+# Predict on the test set
+y_predict_g = best_rf_model.predict(X_test)
+
+# Evaluate the model
+mseg = mean_squared_error(y_test, y_predict_g)
+rmseg = np.sqrt(mse)
+maeg = mean_absolute_error(y_test, y_predict_g)
+r2g = r2_score(y_test, y_predict_g)
+
+# Print the evaluation metrics
+print(f"Mean Squared Error (MSE): {mseg}")
+print(f"Root Mean Squared Error (RMSE): {rmseg}")
+print(f"Mean Absolute Error (MAE): {maeg}")
+print(f"R-squared (R²): {r2g}")
+
+
+
+feature_importances = rf_model.feature_importances_
+
+# Create a DataFrame for better visualization
+feature_importance_df = pd.DataFrame({
+    'Feature': X.columns,
+    'Importance': feature_importances
+}).sort_values(by='Importance', ascending=False)
+
+print(feature_importance_df)
+
+# Plot feature importance
+plt.figure(figsize=(10, 6))
+sns.barplot(x='Importance', y='Feature', data=feature_importance_df)
+plt.title('Feature Importance for Random Forest')
+plt.show()
+
+# Dropping the least important features
+features_to_drop = ['Motivation_Level_Medium', 'Peer_Influence_Neutral', 'Internet_Access_Yes', 
+                    'School_Type_Public', 'Gender_Male']
+
+X_reduced = X.drop(columns=features_to_drop)  # Dropping the selected features
+
+# Train test split
+X_train, X_test, y_train, y_test = train_test_split(X_reduced, y, test_size=0.2, random_state=42)
+
+# Initialize the Random Forest Regressor
+rf_model_reduced = RandomForestRegressor(n_estimators=100, random_state=42)
+
+# Train the model
+rf_model_reduced.fit(X_train, y_train)
+
+# Predict on the test set
+y_predict_reduced = rf_model_reduced.predict(X_test)
+
+# Evaluate the model
+mse_reduced = mean_squared_error(y_test, y_predict_reduced)
+rmse_reduced = np.sqrt(mse_reduced)
+mae_reduced = mean_absolute_error(y_test, y_predict_reduced)
+r2_reduced = r2_score(y_test, y_predict_reduced)
+
+# Print the evaluation metrics for the reduced model
+print(f"Mean Squared Error (MSE): {mse_reduced}")
+print(f"Root Mean Squared Error (RMSE): {rmse_reduced}")
+print(f"Mean Absolute Error (MAE): {mae_reduced}")
+print(f"R-squared (R²): {r2_reduced}")
+
+X_grid = X.drop(columns=features_to_drop)  # Dropping the selected features
+y = df_model_1['Exam_Score']
+
+# Step 2: Train-test split
+X_train, X_test, y_train, y_test = train_test_split(X_grid, y, test_size=0.2, random_state=42)
+
+# Step 3: we are using old param_grid again.
+
+
+# Step 4: Initialize the RandomForestRegressor
+rf_model_grid = RandomForestRegressor(random_state=42)
+
+# Step 5: Perform GridSearchCV to tune hyperparameters
+grid_search_n = GridSearchCV(estimator=rf_model_grid, param_grid=param_grid, 
+                           cv=5, n_jobs=-1, verbose=2, scoring='neg_mean_squared_error')
+
+# Fit the GridSearchCV to the training data
+grid_search_n.fit(X_train, y_train)
+
+# Step 6: Get the best hyperparameters and best model
+best_params = grid_search_n.best_params_
+print("Best Hyperparameters:", best_params)
+
+# Use the best estimator (model with best hyperparameters) for prediction
+best_rf_model = grid_search_n.best_estimator_
+
+# Step 7: Predict on the test set
+y_predict_grid = best_rf_model.predict(X_test)
+
+# Step 8: Evaluate the model
+mse_grid = mean_squared_error(y_test, y_predict_grid)
+rmse_grid = np.sqrt(mse_grid)
+mae_grid = mean_absolute_error(y_test, y_predict_grid)
+r2_grid = r2_score(y_test, y_predict_grid)
+
+# Print the evaluation metrics
+print(f"Mean Squared Error (MSE): {mse_grid}")
+print(f"Root Mean Squared Error (RMSE): {rmse_grid}")
+print(f"Mean Absolute Error (MAE): {mae_grid}")
+print(f"R-squared (R²): {r2_grid}")
