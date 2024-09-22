@@ -85,5 +85,5 @@ Open a pull request.
 
 
 Acknowledgments
-Dataset source: [Mention the source]
+
 Special thanks to collaborators and instructors.
